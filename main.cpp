@@ -6,9 +6,18 @@
 #include <GL/gl.h>
 #include <ctime>
 #include <iostream>
-#include <cstdlib>
-#include <GL/freeglut.h>
+#include <cstdlib> // For rand()
+#include <GL/freeglut.h>  // Change this to FreeGLUT header for proper mouse wheel support
 #include <time.h>
+#include<mmsystem.h>
+#include<stdio.h>
+
+
+
+
+
+
+
 
 // Constants for field and goal dimensions
 const float FIELD_RADIUS = 6.0f;  // Radius of the circular field
@@ -17,24 +26,30 @@ const float GOAL_HEIGHT = 1.0f;
 const float GOAL_DEPTH = 0.1f;    // Depth of the goal
 const float GOAL_OFFSET = 0.5f;   // Distance from the edge of the field to the goalposts
 
+
+
 // Window dimensions
 int width = 800, height = 600;
 
 // Variables for mouse control
-int lastX = width / 2, lastY = height / 2;
-bool isMousePressed = false;
+int lastX = width / 2, lastY = height / 2;  // Start with the mouse at the center
+bool isMousePressed = false;  // To check if the mouse button is pressed
 
-// Camera angles and position
-float yaw = 0.0f;
-float pitch = 0.0f;
-float distance = 50.0f;
+
+// Camera angles (yaw and pitch) and position
+float yaw = 0.0f;      // Rotation around the Y-axis
+float pitch = 0.0f;    // Rotation around the X-axis
+float distance = 50.0f; // Distance from the center of the pitch
 float cameraX = 0.0f, cameraY = 10.0f, cameraZ = 50.0f;
+
 
 // Ball properties
 float ballRadius = 1.0f;
 float ballPosX = 0.0f, ballPosY = ballRadius, ballPosZ = 0.0f;
 float ballVelocityX = 0.0f, ballVelocityY = 0.0f, ballVelocityZ = 0.0f;
-float gravity = -0.098f;
+//float gravity = -0.098f;
+
+
 
 // Car dimensions
 const float CAR_LENGTH = 4.0f;
@@ -43,124 +58,231 @@ const float CAR_HEIGHT = 1.5f;
 
 // Camera position
 float cameraAngle = 0.0f;
-float cameraDistance = 15.0f;
+float cameraDistance = 15.0f;  // Increased to see both cars
 
-// Car movement properties
-struct Car {
-    float x;
-    float z;
-    float rotation;
-    float speed;
-    float acceleration;
-    bool isAccelerating;
-    bool isBraking;
-    bool isTurningLeft;
-    bool isTurningRight;
-};
 
-Car redCar = {5.0f, 0.0f, 0.0f, 0.0f, 0.0f, false, false, false, false};
-Car blueCar = {-5.0f, 0.0f, 180.0f, 0.0f, 0.0f, false, false, false, false};
 
-const float MAX_SPEED = 0.3f;
-const float ACCELERATION = 0.01f;
-const float BRAKE_FORCE = 0.02f;
-const float TURN_SPEED = 3.0f;
-const float FRICTION = 0.005f;
+// Variables for car 1 position, velocity, and rotation
+float car1PosX = 0.0f, car1PosZ = 0.0f;
+float car1Velocity = 0.0f;
+float car1Rotation = 0.0f;
+float car1AngularVelocity = 0.0f;
 
-// Cloud structure
-struct Cloud {
-    float x, y, z;
-    float speedX, speedZ;
-    float size;
-};
+// Variables for car 2 position, velocity, and rotation
+float car2PosX = 5.0f, car2PosZ = 5.0f;
+float car2Velocity = 0.0f;
+float car2Rotation = 0.0f;
+float car2AngularVelocity = 0.0f;
 
-Cloud clouds[5];
+// Acceleration and deceleration constants
+const float acceleration = 0.02f;
+const float deceleration = 0.01f;
+const float maxSpeed = 0.3f;
+const float angularSpeed = 2.0f;
 
+
+// Key input flags
+bool keys[256] = { false };
+
+
+
+
+// Function to set up the camera
 void setupCamera() {
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
     gluPerspective(45.0, (GLfloat)width / (GLfloat)height, 1.0, 800.0);
 
+    // Calculate camera position using yaw and pitch
     cameraX = distance * cosf(pitch) * sinf(yaw);
     cameraY = distance * sinf(pitch);
     cameraZ = distance * cosf(pitch) * cosf(yaw);
 
-    gluLookAt(cameraX, cameraY, cameraZ,
-              0.0f, 0.0f, 0.0f,
-              0.0f, 1.0f, 0.0f);
+    // Look at the center of the football pitch
+    gluLookAt(cameraX, cameraY, cameraZ,  // Camera position
+              0.0f, 0.0f, 0.0f,        // Look-at position (center of pitch)
+              0.0f, 1.0f, 0.0f);       // Up vector
 }
 
+// >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+//Next Functions are for the mouse ZOOM in/out and POV rotation >>>>>>>>>>>>>>>>>>>>>>>>>
+// Function to handle mouse motion for controlling the camera
 void mouseMotion(int x, int y) {
     if (isMousePressed) {
-        int deltaX = x - lastX;
-        int deltaY = y - lastY;
+        int deltaX = x - lastX;  // Mouse movement in X direction
+        int deltaY = y - lastY;  // Mouse movement in Y direction
 
-        yaw += deltaX * 0.01f;
-        pitch -= deltaY * 0.01f;
+        // Update yaw and pitch based on mouse movement
+        yaw += deltaX * 0.01f;  // Sensitivity factor (adjust as needed)
+        pitch -= deltaY * 0.01f; // Sensitivity factor (adjust as needed)
 
+        // Limit the pitch to avoid flipping the camera
         if (pitch > 1.5f) pitch = 1.5f;
         if (pitch < -1.5f) pitch = -1.5f;
     }
+
+    // Update the last mouse position
     lastX = x;
     lastY = y;
-    glutPostRedisplay();
+    glutPostRedisplay();  // Redraw the scene
 }
 
+// Function to handle mouse button press and release
 void mouseButton(int button, int state, int x, int y) {
     if (button == GLUT_LEFT_BUTTON) {
-        isMousePressed = (state == GLUT_DOWN);
-        lastX = x;
-        lastY = y;
+        if (state == GLUT_DOWN) {
+            isMousePressed = true;  // Start rotating the camera
+            lastX = x;
+            lastY = y;
+        } else {
+            isMousePressed = false;  // Stop rotating the camera
+        }
     }
 }
 
+// Function to handle mouse wheel scroll for zoom in and zoom out
 void mouseWheel(int button, int dir, int x, int y) {
     if (dir > 0) {
+        // Zoom in
         distance -= 2.0f;
-        if (distance < 10.0f) distance = 10.0f;
+        if (distance < 10.0f) distance = 10.0f;  // Prevent camera from getting too close
     } else {
+        // Zoom out
         distance += 2.0f;
-        if (distance > 100.0f) distance = 100.0f;
+        if (distance > 100.0f) distance = 100.0f;  // Prevent camera from getting too far
     }
-    glutPostRedisplay();
+    glutPostRedisplay();  // Redraw the scene with updated zoom
 }
 
+
+
+
+
+// Handle key press
+void keyDown(unsigned char key, int x, int y) {
+    keys[key] = true;
+}
+
+// Handle key release
+void keyUp(unsigned char key, int x, int y) {
+    keys[key] = false;
+}
+
+// Update the cars' velocity and position
+void updateCars() {
+    // Update car 1
+    if (keys['w'] || keys['W']) {
+        car1Velocity += acceleration;
+        if (car1Velocity > maxSpeed) car1Velocity = maxSpeed;
+    } else if (keys['s'] || keys['S']) {
+        car1Velocity -= acceleration;
+        if (car1Velocity < -maxSpeed) car1Velocity = -maxSpeed;
+    } else {
+        if (car1Velocity > 0) car1Velocity -= deceleration;
+        if (car1Velocity < 0) car1Velocity += deceleration;
+        if (fabs(car1Velocity) < deceleration) car1Velocity = 0.0f;
+    }
+
+    if (keys['a'] || keys['A']) {
+        car1AngularVelocity = angularSpeed;
+    } else if (keys['d'] || keys['D']) {
+        car1AngularVelocity = -angularSpeed;
+    } else {
+        car1AngularVelocity = 0.0f;
+    }
+
+    car1Rotation += car1AngularVelocity;
+    car1PosX += sin(car1Rotation * M_PI / 180.0f) * car1Velocity;
+    car1PosZ += cos(car1Rotation * M_PI / 180.0f) * car1Velocity;
+
+    // Update car 2
+    if (keys['i'] || keys['I']) {
+        car2Velocity += acceleration;
+        if (car2Velocity > maxSpeed) car2Velocity = maxSpeed;
+    } else if (keys['k'] || keys['K']) {
+        car2Velocity -= acceleration;
+        if (car2Velocity < -maxSpeed) car2Velocity = -maxSpeed;
+    } else {
+        if (car2Velocity > 0) car2Velocity -= deceleration;
+        if (car2Velocity < 0) car2Velocity += deceleration;
+        if (fabs(car2Velocity) < deceleration) car2Velocity = 0.0f;
+    }
+
+    if (keys['j'] || keys['J']) {
+        car2AngularVelocity = angularSpeed;
+    } else if (keys['l'] || keys['L']) {
+        car2AngularVelocity = -angularSpeed;
+    } else {
+        car2AngularVelocity = 0.0f;
+    }
+
+    car2Rotation += car2AngularVelocity;
+    car2PosX += sin(car2Rotation * M_PI / 180.0f) * car2Velocity;
+    car2PosZ += cos(car2Rotation * M_PI / 180.0f) * car2Velocity;
+}
+
+
+
+// Cloud positions and speeds
+struct Cloud {
+    float x, y, z;      // Cloud position
+    float speedX, speedZ; // Cloud movement speed
+    float size;         // Cloud size
+};
+
+Cloud clouds[5];  // Array to hold 5 clouds
+
+
+
+//Everything We have drawn in the scene
+// Function to create a cylinder with a given radius and height
 void drawCylinder(float radius, float height, int slices, int stacks) {
     GLUquadric* quad = gluNewQuadric();
     gluCylinder(quad, radius, radius, height, slices, stacks);
     gluDeleteQuadric(quad);
 }
 
+// Function to draw a hollow pipe for the GOAL POSTS
 void drawHollowPipe(float outerRadius, float height) {
+    // Draw the outer cylinder (the main body of the pipe)
     glPushMatrix();
-    glColor3f(1.0f, 1.0f, 1.0f);
+    glColor3f(1.0f, 1.0f, 1.0f); // White for outer surface
     drawCylinder(outerRadius, height, 10, 10);
     glPopMatrix();
 }
 
-void drawField() {
-    glColor3f(0.0, 0.8, 0.0);
 
+// Function to draw the circular football field
+void drawField() {
+    glColor3f(0.0, 0.8, 0.0); // Green color for the field
+
+    // Draw the circular field
     glBegin(GL_POLYGON);
     for (int i = 0; i < 360; i++) {
-        float angle = i * 3.14159f / 180.0f;
+        float angle = i * 3.14159f / 180.0f;  // Convert degrees to radians
         glVertex3f(FIELD_RADIUS * cos(angle), 0.0f, FIELD_RADIUS * sin(angle));
     }
     glEnd();
 
+
+    //Horizontal Midline
     glPushMatrix();
     glLineWidth(10.0);
-    glColor3f(1.0f, 1.0f, 1.0f);
+    glColor3f(1.0f, 1.0f, 1.0f); // Red color for the Z-axis line
     glRotatef(-90.0f, 0.0f, 1.0f, 0.0f);
-    glBegin(GL_LINES);
-    glVertex3f(0.0f, 0.0f, -5.9f);
-    glVertex3f(0.0f, 0.0f, 5.9f);
+    glBegin(GL_LINES);  // Draw a line
+    glVertex3f(0.0f, 0.0f, -5.9f);  // Start of the Z-axis line
+    glVertex3f(0.0f, 0.0f, 5.9f);   // End of the Z-axis line
     glEnd();
     glPopMatrix();
 
+
+
+
     glBegin(GL_LINE_STRIP);
     glLineWidth(10.0);
-    float centerCircleRadius = 1.0f;
+    // Center circle (for kickoff)
+    float centerCircleRadius = 1.0f; // Radius of the center circle
     for (int i = 0; i < 360; i++) {
         float angle = i * 3.14159f / 180.0f;
         glVertex3f(centerCircleRadius * cos(angle), 0.0f, centerCircleRadius * sin(angle));
@@ -168,383 +290,762 @@ void drawField() {
     glEnd();
 }
 
+
+
+//Draw Circular Football Pitch .
+void DrawFootballPitch(float x, float z, double radius, int a)
+{
+    int i;
+    double angle;
+    glPushMatrix();
+    glRotatef(90.0f, 1.0f, 0.0f, 0.0f);
+    glBegin(GL_POLYGON);
+    glColor3f(0.0f, 1.0f, 0.0f); // Green for the pitch
+
+    for(i=0; i<=a; i++)
+    {
+        angle = i*3.14 / 180;
+        glVertex2f(radius* cos(angle) + x, radius*sin(angle) + z);
+    }
+
+
+    glEnd();
+
+
+
+    glPushMatrix();
+    glLineWidth(10.0);
+    glColor3f(1.0f, 1.0f, 1.0f); // Red color for the Z-axis line
+    glRotatef(90.0f, 1.0f, 0.0f, 0.0f); // To Rotate it 90-Degress around X-Axis
+    glRotatef(90.0f, 0.0f, 1.0f, 0.0f); // To Rotate it 90-Degrees around Y-Axis
+    glBegin(GL_LINES);  // Draw a line
+    glVertex3f(0.0f, 0.0f, -15.0f);  // Start of the Z-axis line
+    glVertex3f(0.0f, 0.0f, 25.0f);   // End of the Z-axis line
+    glEnd();
+    glPopMatrix();
+
+
+    glPopMatrix();
+}
+
+
+//Draw Mid Center Circle..
+void MidCircle(float x, float z, double radius, int a)
+{
+    int i;
+    double angle;
+    glPushMatrix();
+    glRotatef(90.0f, 1.0f, 0.0f, 0.0f);
+    glBegin(GL_LINE_STRIP);
+    glLineWidth(10.0);
+    glColor3f(1.0, 1.0, 1.0);
+
+    for(i=0; i<=a; i++)
+    {
+        angle = i*3.14 / 180;
+        glVertex2f(radius* cos(angle) + x, radius*sin(angle) + z);
+    }
+    glEnd();
+
+    glPopMatrix();
+}
+
+
+
+
+
+
+// Function to draw goals
 void drawLeftGoal(float x, float z) {
     glPushMatrix();
-    glColor3f(1.0f, 1.0f, 1.0f);
+    glColor3f(1.0f, 1.0f, 1.0f); // White goalposts
     glTranslatef(x, 3.0f, z);
 
+    // Draw the vertical goalposts (4 posts in total)
+
+    // Rotate the crossbar 90 degrees around the X-axis
     glPushMatrix();
     glRotatef(90.0f, 5.0f, 0.0f, 0.0f);
 
     glPushMatrix();
-    glTranslatef(16.5f, 18.0f, 1.5f);
-    drawHollowPipe(0.1f, 1.5f);
+    glTranslatef(18.5f, 18.0f, 0.5f); // Left post
+    drawHollowPipe(0.1f, 2.5f);
     glPopMatrix();
 
+
+    // Rotate the crossbar 90 degrees around the X-axis
     glPushMatrix();
     glRotatef(90.0f, 1.0f, 0.0f, 0.0f);
 
     glPushMatrix();
-    glTranslatef(13.5f, 18.0f, 1.5f);
-    drawHollowPipe(0.1f, 1.5f);
+    glTranslatef(12.5f, 18.0f, 0.5f); // Right post
+    drawHollowPipe(0.1f, 2.5f);
     glPopMatrix();
 
+
+
+    // Rotate the crossbar 90 degrees around the X-axis
     glPushMatrix();
     glRotatef(90.0f, 0.0f, 1.0f, 0.0f);
-
+    // Draw the crossbar
     glPushMatrix();
-    glTranslatef(-18.0f, -1.5f, 13.5f);
-    drawHollowPipe(0.1f, 3.0f);
+    glTranslatef(-18.0f, -0.6f, 12.5f);
+    //glScalef(10.0f, 0.2f, 0.2f); // Scale to make the crossbar
+    drawHollowPipe(0.1f, 6.0f); // Crossbar
     glPopMatrix();
+
+
+    glPopMatrix();
+
 }
 
+
+// Function to draw goals
 void drawRightGoal(float x, float z) {
     glPushMatrix();
-    glColor3f(1.0f, 1.0f, 1.0f);
+    glColor3f(1.0f, 1.0f, 1.0f); // White goalposts
     glTranslatef(x, 3.0f, z);
 
+    // Draw the vertical goalposts (4 posts in total)
+
+    // Rotate the crossbar 90 degrees around the X-axis
     glPushMatrix();
     glRotatef(90.0f, 5.0f, 0.0f, 0.0f);
 
     glPushMatrix();
-    glTranslatef(16.5f, 18.0f, 1.5f);
-    drawHollowPipe(0.1f, 1.5f);
+    glTranslatef(18.5f, 18.0f, 0.5f); // Left post
+    drawHollowPipe(0.1f, 2.5f);
     glPopMatrix();
 
+
+
+    // Rotate the crossbar 90 degrees around the X-axis
     glPushMatrix();
     glRotatef(90.0f, 1.0f, 0.0f, 0.0f);
 
     glPushMatrix();
-    glTranslatef(13.5f, 18.0f, 1.5f);
-    drawHollowPipe(0.1f, 1.5f);
+    glTranslatef(12.5f, 18.0f, 0.5f); // Right post
+    drawHollowPipe(0.1f, 2.5f);
     glPopMatrix();
 
+
+
+    // Rotate the crossbar 90 degrees around the X-axis
     glPushMatrix();
     glRotatef(90.0f, 0.0f, 1.0f, 0.0f);
-
+    // Draw the crossbar
     glPushMatrix();
-    glTranslatef(-18.0f, -1.5f, 13.5f);
-    drawHollowPipe(0.1f, 3.0f);
+    glTranslatef(-18.0f, -0.6f, 12.5f);
+    //glScalef(10.0f, 0.2f, 0.2f); // Scale to make the crossbar
+    drawHollowPipe(0.1f, 6.0f); // Crossbar
     glPopMatrix();
+
+
+    glPopMatrix();
+
 }
 
-void drawWheel(float x, float y, float z) {
-    glPushMatrix();
-    glTranslatef(x, y, z);
-    glRotatef(90, 0, 1, 0);
-    glColor3f(0.1f, 0.1f, 0.1f);
-    glutSolidTorus(0.2f, 0.4f, 20, 20);
-    glPopMatrix();
-}
 
-void drawCar(Car& car, bool isRed) {
-    glPushMatrix();
-    glTranslatef(car.x, 0.0f, car.z);
-    glRotatef(car.rotation, 0.0f, 1.0f, 0.0f);
 
-    // Main body
-    glPushMatrix();
-    if (isRed) {
-        glColor3f(1.0f, 0.0f, 0.0f);
-    } else {
-        glColor3f(0.0f, 0.0f, 1.0f);
-    }
-    glScalef(4.0f, 1.5f, 2.0f);
-    glutSolidCube(1.0f);
-    glPopMatrix();
-
-    // Roof
-    glPushMatrix();
-    glTranslatef(0.0f, 0.75f, 0.0f);
-    if (isRed) {
-        glColor3f(0.8f, 0.0f, 0.0f);
-    } else {
-        glColor3f(0.0f, 0.0f, 0.8f);
-    }
-    glScalef(2.4f, 0.75f, 2.0f);
-    glutSolidCube(1.0f);
-    glPopMatrix();
-
-    // Windows
-    glPushMatrix();
-    glColor3f(0.1f, 0.1f, 0.1f);
-    glTranslatef(0.0f, 0.45f, 0.0f);
-    glScalef(2.0f, 0.45f, 2.1f);
-    glutSolidCube(1.0f);
-    glPopMatrix();
-
-    // Wheels
-    drawWheel(1.4f, -0.75f, 1.1f);
-    drawWheel(1.4f, -0.75f, -1.1f);
-    drawWheel(-1.4f, -0.75f, 1.1f);
-    drawWheel(-1.4f, -0.75f, -1.1f);
-
-    // Headlights
-    glPushMatrix();
-    glColor3f(1.0f, 1.0f, 0.0f);
-    glTranslatef(1.8f, 0.0f, 0.6f);
-    glutSolidSphere(0.2f, 10, 10);
-    glTranslatef(0.0f, 0.0f, -1.2f);
-    glutSolidSphere(0.2f, 10, 10);
-    glPopMatrix();
-
-    glPopMatrix();
-}
-
-void drawFootball(float x, float y, float z) {
-    glPushMatrix();
-    glTranslatef(-x, y, z);
-    glColor3f(1.0f, 1.0f, 1.0f);
-    glutSolidSphere(0.25f, 20, 10);
-    glPopMatrix();
-}
-
-void drawCloud(Cloud& cloud) {
-    glColor4f(1.0f, 1.0f, 1.0f, 0.5f);
-
-    for (int i = 0; i < 3; i++) {
-        float offsetX = (rand() % 200 - 100) / 100.0f;
-        float offsetY = (rand() % 200 - 100) / 100.0f;
-        float offsetZ = (rand() % 200 - 100) / 100.0f;
-        float cloudSize = cloud.size * ((rand() % 50 + 50) / 100.0f);
-
-        glPushMatrix();
-        glTranslatef(cloud.x + offsetX, cloud.y + offsetY, cloud.z + offsetZ);
-        glutSolidSphere(cloudSize, 10, 10);
-        glPopMatrix();
-    }
-}
-
+// Draw Seats..
 void drawCube(float x, float y, float z, float width, float height, float depth) {
     glPushMatrix();
-    glTranslatef(x, y, z);
-    glScalef(width, height, depth);
+    glTranslatef(x, y, z); // Move the cube to (x, y, z)
+    glScalef(width, height, depth); // Scale the cube
 
-    glBegin(GL_QUADS);
+    glBegin(GL_QUADS); // Begin drawing the 6 faces of the cube
 
-    // Front face
+    // Front face (Red)
     glColor3f(0.0, 0.0, 0.0);
     glVertex3f(-0.5, -0.5, 0.5);
     glVertex3f(0.5, -0.5, 0.5);
     glVertex3f(0.5, 0.5, 0.5);
     glVertex3f(-0.5, 0.5, 0.5);
 
-    // Back face
+    // Back face (Green)
     glColor3f(0.0, 0.0, 0.0);
     glVertex3f(-0.5, -0.5, -0.5);
     glVertex3f(-0.5, 0.5, -0.5);
     glVertex3f(0.5, 0.5, -0.5);
     glVertex3f(0.5, -0.5, -0.5);
 
-    // Other faces...
-    glEnd();
+    // Left face (Blue)
+    glColor3f(0.0, 0.0, 1.0);
+    glVertex3f(-0.5, -0.5, -0.5);
+    glVertex3f(-0.5, -0.5, 0.5);
+    glVertex3f(-0.5, 0.5, 0.5);
+    glVertex3f(-0.5, 0.5, -0.5);
+
+    // Right face (Yellow)
+    glColor3f(1.0, 1.0, 0.0);
+    glVertex3f(0.5, -0.5, -0.5);
+    glVertex3f(0.5, 0.5, -0.5);
+    glVertex3f(0.5, 0.5, 0.5);
+    glVertex3f(0.5, -0.5, 0.5);
+
+    // Top face (Purple)
+    glColor3f(1.0, 0.0, 1.0);
+    glVertex3f(-0.5, 0.5, -0.5);
+    glVertex3f(0.5, 0.5, -0.5);
+    glVertex3f(0.5, 0.5, 0.5);
+    glVertex3f(-0.5, 0.5, 0.5);
+
+    // Bottom face (Cyan)
+    glColor3f(0.0, 0.0, 0.0);
+    glVertex3f(-0.5, -0.5, -0.5);
+    glVertex3f(-0.5, -0.5, 0.5);
+    glVertex3f(0.5, -0.5, 0.5);
+    glVertex3f(0.5, -0.5, -0.5);
+
+    glEnd(); // End drawing quads
     glPopMatrix();
 }
 
-void updateCarPhysics(Car& car) {
-    // Update acceleration
-    if (car.isAccelerating) {
-        car.acceleration = ACCELERATION;
-    } else if (car.isBraking) {
-        car.acceleration = -BRAKE_FORCE;
+
+
+
+//Draw Ground
+void drawGround() {
+    glColor3f(0.5, 0.5, 0.5); // Set color to grey
+    glBegin(GL_QUADS);
+    glVertex3f(-20, 0, 36);
+    glVertex3f(-6, 0, 36);
+    glVertex3f(-6, 0, 20);
+    glVertex3f(-20, 0, 20);
+    glEnd();
+}
+
+
+
+// Function to draw a single cloud
+void drawCloud(Cloud& cloud) {
+    glColor4f(1.0f, 1.0f, 1.0f, 0.5f); // White with transparency
+
+    // Draw the cloud as a group of spheres
+    for (int i = 0; i < 3; i++) {
+        float offsetX = (rand() % 200 - 100) / 100.0f; // Random offset for cloud shape
+        float offsetY = (rand() % 200 - 100) / 100.0f;
+        float offsetZ = (rand() % 200 - 100) / 100.0f;
+        float cloudSize = cloud.size * ((rand() % 50 + 50) / 100.0f); // Random size variation
+
+        // Draw a small sphere for the cloud part
+        glPushMatrix();
+        glTranslatef(cloud.x + offsetX, cloud.y + offsetY, cloud.z + offsetZ);
+        glutSolidSphere(cloudSize, 10, 10); // Small sphere for cloud
+        glPopMatrix();
+    }
+}
+
+
+
+// Function to draw the BALL
+void drawBall(float x, float y, float z) {
+    glPushMatrix();
+    glTranslatef(-x, y, z);
+    glColor3f(1.0f, 1.0f, 1.0f); // White ball
+    glutSolidSphere(0.5f, 20, 10); // Draw a solid sphere (football)
+    glPopMatrix();
+}
+
+
+
+
+
+void drawWheel(float x, float y, float z) {
+    glPushMatrix();
+    glTranslatef(x, y, z);
+    glRotatef(90, 0, 1, 0);
+
+    // Wheel rim - black for both cars
+    glColor3f(0.1f, 0.1f, 0.1f);
+    glutSolidTorus(0.2f, 0.4f, 20, 20);
+    glPopMatrix();
+}
+
+void drawRedCar(float carPosX, float carPosZ, float carRotation, bool isRed) {
+    glPushMatrix();
+    glTranslatef(carPosX, 0.0f, carPosZ);
+    glRotatef(carRotation, 0.0f, 1.0f, 0.0f);
+
+    // Main body
+    glPushMatrix();
+    if (isRed) {
+        glColor3f(1.0f, 0.0f, 0.0f);  // Red car
     } else {
-        car.acceleration = 0.0f;
+        glColor3f(0.0f, 0.0f, 1.0f);  // Blue car
     }
+    glScalef(CAR_LENGTH, CAR_HEIGHT, CAR_WIDTH);
+    glutSolidCube(1.0f);
+    glPopMatrix();
 
-    // Apply acceleration to speed
-    car.speed += car.acceleration;
-
-    // Apply friction
-    if (car.speed > 0) {
-        car.speed -= FRICTION;
-    } else if (car.speed < 0) {
-        car.speed += FRICTION;
+    // Roof
+    glPushMatrix();
+    glTranslatef(0.0f, CAR_HEIGHT * 0.5f, 0.0f);
+    if (isRed) {
+        glColor3f(0.8f, 0.0f, 0.0f);  // Darker red
+    } else {
+        glColor3f(0.0f, 0.0f, 0.8f);  // Darker blue
     }
+    glScalef(CAR_LENGTH * 0.6f, CAR_HEIGHT * 0.5f, CAR_WIDTH);
+    glutSolidCube(1.0f);
+    glPopMatrix();
 
-    // If speed is very close to 0, set it to 0
-    if (fabs(car.speed) < FRICTION) {
-        car.speed = 0.0f;
-    }
+    // Windows
+    glPushMatrix();
+    glColor3f(0.1f, 0.1f, 0.1f);  // Black windows
+    glTranslatef(0.0f, CAR_HEIGHT * 0.3f, 0.0f);
+    glScalef(CAR_LENGTH * 0.5f, CAR_HEIGHT * 0.3f, CAR_WIDTH + 0.1f);
+    glutSolidCube(1.0f);
+    glPopMatrix();
 
-    // Clamp speed
-    if (car.speed > MAX_SPEED) car.speed = MAX_SPEED;
-    if (car.speed < -MAX_SPEED/2) car.speed = -MAX_SPEED/2;
+    // Wheels
+    drawWheel(CAR_LENGTH * 0.35f, -CAR_HEIGHT * 0.5f, CAR_WIDTH * 0.5f + 0.1f);   // Front right
+    drawWheel(CAR_LENGTH * 0.35f, -CAR_HEIGHT * 0.5f, -CAR_WIDTH * 0.5f - 0.1f);  // Front left
+    drawWheel(-CAR_LENGTH * 0.35f, -CAR_HEIGHT * 0.5f, CAR_WIDTH * 0.5f + 0.1f);  // Back right
+    drawWheel(-CAR_LENGTH * 0.35f, -CAR_HEIGHT * 0.5f, -CAR_WIDTH * 0.5f - 0.1f); // Back left
 
-    // Update rotation
-    if (car.speed != 0) {
-        if (car.isTurningLeft) car.rotation += TURN_SPEED * (car.speed/MAX_SPEED);
-        if (car.isTurningRight) car.rotation -= TURN_SPEED * (car.speed/MAX_SPEED);
-    }
-
-    // Convert rotation to radians for movement calculation
-    float rotationRad = car.rotation * M_PI / 180.0f;
-
-    // Update position based on speed and rotation
-    car.x += car.speed * sin(rotationRad);
-    car.z += car.speed * cos(rotationRad);
-
-    // Keep cars within field bounds
-    float maxDist = FIELD_RADIUS - 2.0f; // Buffer for car size
-    float dist = sqrt(car.x * car.x + car.z * car.z);
-    if (dist > maxDist) {
-        float angle = atan2(car.x, car.z);
-        car.x = maxDist * sin(angle);
-        car.z = maxDist * cos(angle);
-        car.speed *= 0.5f; // Reduce speed on collision
-    }
+    glPopMatrix();
 }
 
-// Keyboard function to handle regular key presses
-void keyboard(unsigned char key, int x, int y) {
-    switch(key) {
-        // Red car controls (WASD)
-        case 'w': case 'W': redCar.isAccelerating = true; break;
-        case 's': case 'S': redCar.isBraking = true; break;
-        case 'a': case 'A': redCar.isTurningLeft = true; break;
-        case 'd': case 'D': redCar.isTurningRight = true; break;
+void drawBlueCar(float carPosX, float carPosZ, float carRotation, bool isRed) {
+    glPushMatrix();
+    glTranslatef(carPosX, 0.0f, carPosZ);
+    glRotatef(carRotation, 0.0f, 1.0f, 0.0f);
+
+    // Main body
+    glPushMatrix();
+    if (isRed) {
+        glColor3f(1.0f, 0.0f, 0.0f);  // Red car
+    } else {
+        glColor3f(0.0f, 0.0f, 1.0f);  // Blue car
     }
-    glutPostRedisplay();
+    glScalef(CAR_LENGTH, CAR_HEIGHT, CAR_WIDTH);
+    glutSolidCube(1.0f);
+    glPopMatrix();
+
+    // Roof
+    glPushMatrix();
+    glTranslatef(0.0f, CAR_HEIGHT * 0.5f, 0.0f);
+    if (isRed) {
+        glColor3f(0.8f, 0.0f, 0.0f);  // Darker red
+    } else {
+        glColor3f(0.0f, 0.0f, 0.8f);  // Darker blue
+    }
+    glScalef(CAR_LENGTH * 0.6f, CAR_HEIGHT * 0.5f, CAR_WIDTH);
+    glutSolidCube(1.0f);
+    glPopMatrix();
+
+    // Windows
+    glPushMatrix();
+    glColor3f(0.1f, 0.1f, 0.1f);  // Black windows
+    glTranslatef(0.0f, CAR_HEIGHT * 0.3f, 0.0f);
+    glScalef(CAR_LENGTH * 0.5f, CAR_HEIGHT * 0.3f, CAR_WIDTH + 0.1f);
+    glutSolidCube(1.0f);
+    glPopMatrix();
+
+    // Wheels
+    drawWheel(CAR_LENGTH * 0.35f, -CAR_HEIGHT * 0.5f, CAR_WIDTH * 0.5f + 0.1f);   // Front right
+    drawWheel(CAR_LENGTH * 0.35f, -CAR_HEIGHT * 0.5f, -CAR_WIDTH * 0.5f - 0.1f);  // Front left
+    drawWheel(-CAR_LENGTH * 0.35f, -CAR_HEIGHT * 0.5f, CAR_WIDTH * 0.5f + 0.1f);  // Back right
+    drawWheel(-CAR_LENGTH * 0.35f, -CAR_HEIGHT * 0.5f, -CAR_WIDTH * 0.5f - 0.1f); // Back left
+
+    glPopMatrix();
 }
 
-// Keyboard function to handle key releases
-void keyboardUp(unsigned char key, int x, int y) {
-    switch(key) {
-        case 'w': case 'W': redCar.isAccelerating = false; break;
-        case 's': case 'S': redCar.isBraking = false; break;
-        case 'a': case 'A': redCar.isTurningLeft = false; break;
-        case 'd': case 'D': redCar.isTurningRight = false; break;
+
+void renderBlueCar() {
+    glPushMatrix();
+    glTranslatef(car1PosX, 0.0f, car1PosZ);
+    glRotatef(car1Rotation, 0.0f, 1.0f, 0.0f);
+
+    // Main body
+    glPushMatrix();
+    glScalef(2.0f, 0.5f, 1.0f); // Elongated main body
+    glColor3f(0.0f, 0.0f, 1.0f); // Blue body
+    glutSolidCube(1.0f);
+    glPopMatrix();
+
+    // Roof
+    glPushMatrix();
+    glTranslatef(0.0f, 0.4f, 0.0f);
+    glScalef(1.2f, 0.4f, 0.8f); // Smaller roof area
+    glColor3f(0.5f, 0.5f, 0.5f); // Gray roof
+    glutSolidCube(1.0f);
+    glPopMatrix();
+
+    // Front hood
+    glPushMatrix();
+    glTranslatef(0.7f, 0.1f, 0.0f);
+    glScalef(0.6f, 0.2f, 0.8f);
+    glColor3f(0.0f, 0.0f, 1.0f); // Match body color
+    glutSolidCube(1.0f);
+    glPopMatrix();
+
+    // Wheels
+    glColor3f(0.0f, 0.0f, 0.0f); // Black wheels
+    glRotatef(90.0f, 0.0f, 1.0f, 0.0f);
+    for (int i = -1; i <= 1; i += 2) {
+        glPushMatrix();
+        glTranslatef(i * 0.9f, -0.3f, 0.5f); // Front wheels
+        glRotatef(90.0f, 0.0f, 1.0f, 0.0f);
+        glutSolidTorus(0.05f, 0.15f, 10, 10);
+        glPopMatrix();
+
+        glPushMatrix();
+        glTranslatef(i * 0.9f, -0.3f, -0.5f); // Back wheels
+        glRotatef(90.0f, 0.0f, 1.0f, 0.0f);
+        glutSolidTorus(0.05f, 0.15f, 10, 10);
+        glPopMatrix();
     }
-    glutPostRedisplay();
+
+    // Headlights
+    glColor3f(1.0f, 1.0f, 0.0f); // Yellow headlights
+    glRotatef(-90.0f, 0.0f, 1.0f, 0.0f);
+    for (int i = -1; i <= 1; i += 2) {
+        glPushMatrix();
+        glTranslatef(1.1f, 0.0f, i * 0.35f);
+        glutSolidSphere(0.1f, 10, 10);
+        glPopMatrix();
+    }
+
+    glPopMatrix();
 }
 
-// Special keyboard function for arrow keys
-void specialKeys(int key, int x, int y) {
-    switch(key) {
-        case GLUT_KEY_UP: blueCar.isAccelerating = true; break;
-        case GLUT_KEY_DOWN: blueCar.isBraking = true; break;
-        case GLUT_KEY_LEFT: blueCar.isTurningLeft = true; break;
-        case GLUT_KEY_RIGHT: blueCar.isTurningRight = true; break;
+
+void renderRedCar() {
+    glPushMatrix();
+    glTranslatef(car2PosX + 10, 0.0f, car2PosZ + 10);
+    glRotatef(car2Rotation, 0.0f, 1.0f, 0.0f);
+
+    // Main body
+    glPushMatrix();
+    glScalef(2.0f, 0.5f, 1.0f); // Elongated main body
+    glColor3f(1.0f, 0.0f, 0.0f); // Blue body
+    glutSolidCube(1.0f);
+    glPopMatrix();
+
+    // Roof
+    glPushMatrix();
+    glTranslatef(0.0f, 0.4f, 0.0f);
+    glScalef(1.2f, 0.4f, 0.8f); // Smaller roof area
+    glColor3f(0.5f, 0.5f, 0.5f); // Gray roof
+    glutSolidCube(1.0f);
+    glPopMatrix();
+
+    // Front hood
+    glPushMatrix();
+    glTranslatef(0.7f, 0.1f, 0.0f);
+    glScalef(0.6f, 0.2f, 0.8f);
+    glColor3f(0.0f, 0.0f, 1.0f); // Match body color
+    glutSolidCube(1.0f);
+    glPopMatrix();
+
+    // Wheels
+    glColor3f(0.0f, 0.0f, 0.0f); // Black wheels
+    glRotatef(90.0f, 0.0f, 1.0f, 0.0f);
+    for (int i = -1; i <= 1; i += 2) {
+        glPushMatrix();
+        glTranslatef(i * 0.9f, -0.3f, 0.5f); // Front wheels
+        glRotatef(90.0f, 0.0f, 1.0f, 0.0f);
+        glutSolidTorus(0.05f, 0.15f, 10, 10);
+        glPopMatrix();
+
+        glPushMatrix();
+        glTranslatef(i * 0.9f, -0.3f, -0.5f); // Back wheels
+        glRotatef(90.0f, 0.0f, 1.0f, 0.0f);
+        glutSolidTorus(0.05f, 0.15f, 10, 10);
+        glPopMatrix();
     }
-    glutPostRedisplay();
+
+    // Headlights
+    glColor3f(1.0f, 1.0f, 0.0f); // Yellow headlights
+    glRotatef(-90.0f, 0.0f, 1.0f, 0.0f);
+    for (int i = -1; i <= 1; i += 2) {
+        glPushMatrix();
+        glTranslatef(1.1f, 0.0f, i * 0.35f);
+        glutSolidSphere(0.1f, 10, 10);
+        glPopMatrix();
+    }
+
+    glPopMatrix();
 }
 
-// Special keyboard function for arrow key releases
-void specialKeysUp(int key, int x, int y) {
-    switch(key) {
-        case GLUT_KEY_UP: blueCar.isAccelerating = false; break;
-        case GLUT_KEY_DOWN: blueCar.isBraking = false; break;
-        case GLUT_KEY_LEFT: blueCar.isTurningLeft = false; break;
-        case GLUT_KEY_RIGHT: blueCar.isTurningRight = false; break;
-    }
-    glutPostRedisplay();
+
+
+
+// Function to set up the perspective
+void setupProjection(int width, int height) {
+    glMatrixMode(GL_PROJECTION);
+    glLoadIdentity();
+    gluPerspective(45.0, (double)width / (double)height, 1.0, 200.0);
+    glMatrixMode(GL_MODELVIEW);
 }
 
-void update(int value) {
-    updateCarPhysics(redCar);
-    updateCarPhysics(blueCar);
-
-    // Update clouds
+// Function to animate the clouds
+void animateClouds(int value) {
     for (int i = 0; i < 5; i++) {
         clouds[i].x += clouds[i].speedX;
         clouds[i].z += clouds[i].speedZ;
 
-        // Reset cloud position if it moves off screen
+        // If the cloud moves off the screen, reset its position
         if (clouds[i].x > 10.0f) clouds[i].x = -10.0f;
         if (clouds[i].x < -10.0f) clouds[i].x = 10.0f;
+
         if (clouds[i].z > 10.0f) clouds[i].z = -10.0f;
         if (clouds[i].z < -10.0f) clouds[i].z = 10.0f;
     }
 
-    glutPostRedisplay();
-    glutTimerFunc(16, update, 0); // 60 FPS update rate
+    glutPostRedisplay(); // Redraw the scene
+
+    // Call the function again in 50 milliseconds (slower movement)
+    glutTimerFunc(50, animateClouds, 0);
 }
 
+// Initialize clouds with random positions and speeds
+void initClouds() {
+    for (int i = 0; i < 5; i++) {
+        clouds[i].x = rand() % 20 - 10;   // Random X position for the cloud
+        clouds[i].y = 5 + rand() % 5;     // Clouds floating at a random height
+        clouds[i].z = rand() % 20 - 10;   // Random Z position for the cloud
+        clouds[i].speedX = (rand() % 3 + 1) * 0.002f;  // Slower speed in X direction
+        clouds[i].speedZ = (rand() % 3 + 1) * 0.002f;  // Slower speed in Z direction
+        clouds[i].size = rand() % 3 + 2;   // Random size for the cloud
+    }
+}
+
+// Display function for rendering the scene
 void display() {
-    glClearColor(135.0f/255.0f, 206.0f/255.0f, 235.0f/255.0f, 1.0f);
+    // Set the background color to sky blue (RGB: 135, 206, 235)
+    glClearColor(135.0f / 255.0f, 206.0f / 255.0f, 235.0f / 255.0f, 1.0f);
+
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     setupCamera();
 
-    // Draw the scene
-    drawField();
-    drawLeftGoal(-15.0f, -12.5f);
-    drawRightGoal(-15.0f, -23.5f);
+    // Initialize clouds
+    //initClouds();
 
-    // Draw seats
-    drawCube(-10.0f, 0.25f, 0.0f, 1.0f, 0.5f, 15.0f);
-    drawCube(-11.0f, 0.5f, 0.0f, 1.0f, 1.0f, 15.0f);
-    drawCube(-12.0f, 0.75f, 0.0f, 1.0f, 1.5f, 15.0f);
-    drawCube(-13.0f, 1.0f, 0.0f, 1.0f, 2.0f, 15.0f);
-    drawCube(-14.0f, 1.25f, 0.0f, 1.0f, 2.5f, 15.0f);
-    drawCube(-15.0f, 1.5f, 0.0f, 1.0f, 3.0f, 15.0f);
+    //drawField(); // Draw the football field
 
-    drawFootball(0.0, 0.3, 0.0);
+    DrawFootballPitch(5.0f, 0.0f, 20.0f, 360); //Circular Pitch
 
-    // Draw cars
-    drawCar(redCar, true);
-    drawCar(blueCar, false);
+    MidCircle(5.0f, 0.0f, 3.0f ,360); // Middle Center
 
-    // Draw clouds with transparency
+    drawLeftGoal(-9.5f, 0.0f); // Draw LEFT goal
+
+    drawRightGoal(-9.5f, -36.5f); // Draw RIGHT goal
+
+
+    //Seats
+
+    drawCube(-20.0f, 0.25f, 0.0f, 1.0f, 0.5f, 35.0f); //Level 1
+
+    drawCube(-21.0f, 0.5f, 0.0f, 1.0f, 1.0f, 35.0f); //Level 2
+
+    drawCube(-22.0f, 0.75f, 0.0f, 1.0f, 1.5f, 35.0f); //Level 3
+
+    drawCube(-23.0f, 1.0f, 0.0f, 1.0f, 2.0f, 35.0f); //Level 4
+
+    drawCube(-24.0f, 1.25f, 0.0f, 1.0f, 2.5f, 35.0f); //Level 5
+
+    drawCube(-25.0f, 1.5f, 0.0f, 1.0f, 3.0f, 35.0f); //Level 6
+
+    drawCube(-26.0f, 1.75f, 0.0f, 1.0f, 3.5f, 35.0f); //Level 7
+
+    drawCube(-27.0f, 2.0f, 0.0f, 1.0f, 4.0f, 35.0f);  //Level 8
+
+    drawCube(-28.0f, 2.25f, 0.0f, 1.0f, 4.5f, 35.0f);  //Level 9
+
+    drawCube(-29.0f, 2.5f, 0.0f, 1.0f, 5.0f, 35.0f);  //Level 10
+
+    drawCube(-30.0f, 2.75f, 0.0f, 1.0f, 5.6f, 35.0f);  //Level 11
+
+
+
+    //-------------------------------------------------------------------------------------------------//
+
+    glRotatef(180.0f, 0.0f, 1.0f, 0.0f);
+    glTranslatef(-10.f, 0.0f, 0.0f);
+    drawCube(-20.0f, 0.25f, 0.0f, 1.0f, 0.5f, 35.0f); //Level 1
+
+    drawCube(-21.0f, 0.5f, 0.0f, 1.0f, 1.0f, 35.0f); //Level 2
+
+    drawCube(-22.0f, 0.75f, 0.0f, 1.0f, 1.5f, 35.0f); //Level 3
+
+    drawCube(-23.0f, 1.0f, 0.0f, 1.0f, 2.0f, 35.0f); //Level 4
+
+    drawCube(-24.0f, 1.25f, 0.0f, 1.0f, 2.5f, 35.0f); //Level 5
+
+    drawCube(-25.0f, 1.5f, 0.0f, 1.0f, 3.0f, 35.0f); //Level 6
+
+    drawCube(-26.0f, 1.75f, 0.0f, 1.0f, 3.5f, 35.0f); //Level 7
+
+    drawCube(-27.0f, 2.0f, 0.0f, 1.0f, 4.0f, 35.0f);  //Level 8
+
+    drawCube(-28.0f, 2.25f, 0.0f, 1.0f, 4.5f, 35.0f);  //Level 9
+
+    drawCube(-29.0f, 2.5f, 0.0f, 1.0f, 5.0f, 35.0f);  //Level 10
+
+    drawCube(-30.0f, 2.75f, 0.0f, 1.0f, 5.6f, 35.0f);  //Level 11
+
+
+    //-------------------------------------------------------------------------------------------------//
+
+    glRotatef(-90.0f, 0.0f, 1.0f, 0.0f);
+    glTranslatef(-10.f, 0.0f, -5.0f);
+    drawCube(-20.0f, 0.25f, 0.0f, 1.0f, 0.5f, 35.0f); //Level 1
+
+    drawCube(-21.0f, 0.5f, 0.0f, 1.0f, 1.0f, 35.0f); //Level 2
+
+    drawCube(-22.0f, 0.75f, 0.0f, 1.0f, 1.5f, 35.0f); //Level 3
+
+    drawCube(-23.0f, 1.0f, 0.0f, 1.0f, 2.0f, 35.0f); //Level 4
+
+    drawCube(-24.0f, 1.25f, 0.0f, 1.0f, 2.5f, 35.0f); //Level 5
+
+    drawCube(-25.0f, 1.5f, 0.0f, 1.0f, 3.0f, 35.0f); //Level 6
+
+    drawCube(-26.0f, 1.75f, 0.0f, 1.0f, 3.5f, 35.0f); //Level 7
+
+    drawCube(-27.0f, 2.0f, 0.0f, 1.0f, 4.0f, 35.0f);  //Level 8
+
+    drawCube(-28.0f, 2.25f, 0.0f, 1.0f, 4.5f, 35.0f);  //Level 9
+
+    drawCube(-29.0f, 2.5f, 0.0f, 1.0f, 5.0f, 35.0f);  //Level 10
+
+    drawCube(-30.0f, 2.75f, 0.0f, 1.0f, 5.6f, 35.0f);  //Level 11
+
+
+    //-------------------------------------------------------------------------------------------------//
+
+    glRotatef(180.0f, 0.0f, 1.0f, 0.0f);
+    glTranslatef(-15.0f, 0.0f, 0.0f);
+    drawCube(-20.0f, 0.25f, 0.0f, 1.0f, 0.5f, 35.0f); //Level 1
+
+    drawCube(-21.0f, 0.5f, 0.0f, 1.0f, 1.0f, 35.0f); //Level 2
+
+    drawCube(-22.0f, 0.75f, 0.0f, 1.0f, 1.5f, 35.0f); //Level 3
+
+    drawCube(-23.0f, 1.0f, 0.0f, 1.0f, 2.0f, 35.0f); //Level 4
+
+    drawCube(-24.0f, 1.25f, 0.0f, 1.0f, 2.5f, 35.0f); //Level 5
+
+    drawCube(-25.0f, 1.5f, 0.0f, 1.0f, 3.0f, 35.0f); //Level 6
+
+    drawCube(-26.0f, 1.75f, 0.0f, 1.0f, 3.5f, 35.0f); //Level 7
+
+    drawCube(-27.0f, 2.0f, 0.0f, 1.0f, 4.0f, 35.0f);  //Level 8
+
+    drawCube(-28.0f, 2.25f, 0.0f, 1.0f, 4.5f, 35.0f);  //Level 9
+
+    drawCube(-29.0f, 2.5f, 0.0f, 1.0f, 5.0f, 35.0f);  //Level 10
+
+    drawCube(-30.0f, 2.75f, 0.0f, 1.0f, 5.6f, 35.0f);  //Level 11
+
+
+
+
+    drawBall(0.0, 0.7, 0.0); // Draw the football at the center
+
+
+
+    //Create Cars
+    glTranslatef(4.0f, 0.5f, 1.0f);
+    renderBlueCar();
+
+    glTranslatef(0.0f, 0.1f, -12.0f);
+    renderRedCar();
+
+
+
+
+    //drawBlueCar(0.0f, 0.0f, 45.0f, true);  // Draw a red car
+    //drawRedCar(2.0f, 1.5f, 90.0f, false); // Draw a blue car
+
+
+
+    //Draw Ground..
+    //glTranslatef(5.0f , 0.0f, -28.0f);
+    //drawGround();
+
+
+
+    // Add clouds to the sky at random positions
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    for (int i = 0; i < 5; i++) {
+
+    for (int i = 0; i < 5; i++) {  // Draw 5 clouds
         drawCloud(clouds[i]);
     }
+
     glDisable(GL_BLEND);
 
     glutSwapBuffers();
 }
 
-void initClouds() {
-    for (int i = 0; i < 5; i++) {
-        clouds[i].x = rand() % 20 - 10;
-        clouds[i].y = 5 + rand() % 5;
-        clouds[i].z = rand() % 20 - 10;
-        clouds[i].speedX = (rand() % 3 + 1) * 0.002f;
-        clouds[i].speedZ = (rand() % 3 + 1) * 0.002f;
-        clouds[i].size = rand() % 3 + 2;
-    }
+// Timer function for updating the scene
+void update(int value) {
+    updateCars(); // Update car movement
+    glutPostRedisplay(); // Redraw the scene
+    glutTimerFunc(16, update, 0); // Call update again after 16ms (~60 FPS)
 }
 
-void setupProjection(int w, int h) {
-    glMatrixMode(GL_PROJECTION);
-    glLoadIdentity();
-    gluPerspective(45.0, (double)w / (double)h, 1.0, 200.0);
-    glMatrixMode(GL_MODELVIEW);
-}
 
+
+// Reshape function to handle window resizing
 void reshape(int w, int h) {
-    width = w;
-    height = h;
     glViewport(0, 0, w, h);
     setupProjection(w, h);
+
+
 }
 
+
+
 int main(int argc, char** argv) {
+
+   if (PlaySound(TEXT("D:\\computer_graphics\\12th_Project\\ee\\song.wav"), NULL, SND_FILENAME | SND_ASYNC)) {
+    printf("Sound is playing...\n");
+} else {
+    printf("Failed to play sound! Error: %d\n", GetLastError());
+}
+
+    // Wait for the sound to finish
+    Sleep(5000);
+
+
+    // Adjust the delay as needed
+    // Initialize GLUT
     glutInit(&argc, argv);
     glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH);
     glutInitWindowSize(800, 600);
-    glutCreateWindow("3D Football Game with Moving Cars");
+    glutCreateWindow("211000632-211001298-221002934");
 
-    glEnable(GL_DEPTH_TEST);
+    // Initialize OpenGL
+    glEnable(GL_DEPTH_TEST); // Enable depth testing for 3D effects
 
-    // Initialize clouds
-    initClouds();
 
-    // Register callbacks
+
+    // Register GLUT callback functions
     glutDisplayFunc(display);
     glutReshapeFunc(reshape);
-    glutMouseFunc(mouseButton);
-    glutMotionFunc(mouseMotion);
-    glutMouseWheelFunc(mouseWheel);
-    glutKeyboardFunc(keyboard);
-    glutKeyboardUpFunc(keyboardUp);
-    glutSpecialFunc(specialKeys);
-    glutSpecialUpFunc(specialKeysUp);
 
-    // Start the update timer
-    glutTimerFunc(0, update, 0);
+    // Register mouse callback functions
+    glutMouseFunc(mouseButton);         // For mouse button press/release
+    glutMotionFunc(mouseMotion);        // For mouse movement while button is pressed
+    glutMouseWheelFunc(mouseWheel);     // For mouse wheel zoom
+    glutKeyboardFunc(keyDown);
+    glutKeyboardUpFunc(keyUp);
 
+
+    // Start the cloud animation
+    //glutTimerFunc(50, animateClouds, 0);
+    glutTimerFunc(16, update, 0); // Start update loop
+
+    // Enter the GLUT event loop
     glutMainLoop();
+
     return 0;
 }
+
+
